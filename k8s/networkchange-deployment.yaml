@@ -1,0 +1,189 @@
+# networkchange — the app itself (VHT Network Automation / Odysseus codebase).
+# Mirrors docker-compose.yml lines 2-90.
+#
+# Replicas is pinned to 1 because this is intentionally a monolith: MCP
+# connections, detached agent-run SSE replay, and background scheduler/poller
+# coordination are process-local. Postgres/MinIO/Qdrant persist durable data,
+# but horizontal replicas require externalizing those runtime coordinators.
+apiVersion: v1
+kind: Service
+metadata:
+  name: networkchange
+  namespace: hw5gai
+  labels:
+    app.kubernetes.io/name: networkchange
+    app.kubernetes.io/part-of: 5g-agentic-ai
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: networkchange
+  ports:
+    - name: http
+      port: 7000
+      targetPort: 7000
+      nodePort: 30070
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: networkchange
+  namespace: hw5gai
+  labels:
+    app.kubernetes.io/name: networkchange
+    app.kubernetes.io/part-of: 5g-agentic-ai
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # Avoid two pods both trying to run alembic migrations
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: networkchange
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: networkchange
+    spec:
+      imagePullSecrets:
+        - name: harbor-pull
+      # Hard node affinity — pin to host 10.55.110.122. Label must be set on
+      # the node once: kubectl label node <name> vht.vn/node-ip=10.55.110.122
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: vht.vn/node-ip
+                    operator: In
+                    values:
+                      - "10.55.110.122"
+      securityContext:
+        # Mirror the PUID/PGID pattern from docker/entrypoint.sh.
+        # fsGroup ensuresmounted PVC files are group-writable by UID 1000.
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      initContainers:
+        # Stand-in for docker-compose `depends_on: searxng: healthy`.
+        # k8s has no native depends_on, so block the main container
+        # until both deps accept traffic.
+        - name: wait-for-deps
+          image: 172.20.1.22/proxy-cache/library/postgres:16
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "[init] waiting for postgres.hw5gai.svc.cluster.local:5432"
+              until pg_isready -h postgres.hw5gai.svc.cluster.local -p 5432 -U "$POSTGRES_USER"; do
+                sleep 2
+              done
+              echo "[init] waiting for searxng.hw5gai.svc.cluster.local:8080"
+              until (exec 3<>/dev/tcp/searxng.hw5gai.svc.cluster.local/8080) 2>/dev/null; do
+                sleep 2
+              done
+              echo "[init] deps ready"
+          envFrom:
+            - secretRef:
+                name: app-env
+      containers:
+        - name: networkchange
+          image: 172.20.1.22/5g-ai/nc-v7-monolith:latest
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+                name: app-env
+          ports:
+            - containerPort: 7000
+              name: http
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: data
+              mountPath: /app/uploads
+              subPath: uploads
+            - name: logs
+              mountPath: /app/logs
+            - name: services-cache
+              # Never mount over /app/services: that hides the Python package
+              # copied into the image and makes imports fail at startup.
+              mountPath: /app/services/cache
+            - name: ssh
+              mountPath: /app/.ssh
+            - name: hf-cache
+              mountPath: /app/.cache/huggingface
+            - name: local-pip
+              mountPath: /app/.local
+            # Local embedding weights (read-only). hostPath is a
+            # single-node workaround — for multi-node clusters, provision
+            # a real PVC or bake the model into a custom image.
+            - name: embeddings
+              mountPath: /models/bge-small-en-v1.5
+              readOnly: true
+          # /api/health and /api/ready are auth-exempt (AUTH_EXEMPT_EXACT in app.py).
+          # /api/ready returns 503 until Postgres+Qdrant+MinIO all pass
+          # the readiness check, so it is the correct readinessProbe.
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 7000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/ready
+              port: 7000
+            # 60s grace — Postgres advisory-lock migration can take time
+            # on a cold DB.
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 12
+          # Startup probe — allow up to 5min for first-boot: PUID chown
+          # loop + alembic upgrade + embedding model load.
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 7000
+            failureThreshold: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: networkchange-data
+        - name: logs
+          emptyDir: {}
+        - name: services-cache
+          emptyDir: {}
+        - name: ssh
+          emptyDir: {}
+        - name: hf-cache
+          emptyDir: {}
+        - name: local-pip
+          emptyDir: {}
+        - name: embeddings
+          hostPath:
+            path: /home/ai/networkchange/bge-small-en-v1.5
+            type: Directory
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: networkchange-data
+  namespace: hw5gai
+  labels:
+    app.kubernetes.io/name: networkchange
+    app.kubernetes.io/part-of: 5g-agentic-ai
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi

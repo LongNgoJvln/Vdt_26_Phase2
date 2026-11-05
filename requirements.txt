@@ -1,0 +1,62 @@
+fastapi
+uvicorn
+python-multipart
+python-dotenv
+httpx
+pydantic>=2.0
+pydantic-settings>=2.0
+SQLAlchemy
+# Multi-tenant Postgres backend (core/database.py). When
+# ODYSSEUS_MULTITENANT_POSTGRES=true, the app talks to Postgres via
+# psycopg3 and Alembic owns schema; otherwise SQLite is used.
+psycopg[binary]>=3.2
+alembic>=1.13
+pypdf
+PyYAML>=6.0
+beautifulsoup4
+charset-normalizer
+# Office / EPUB text extraction for personal-docs RAG ingestion + chat
+# attachments. Without this, .docx/.xlsx/.pptx/.xls/.epub uploads land
+# in RAG as empty chunks. Pinned for age per dependency policy.
+markitdown[docx,pptx,xlsx,xls]==0.1.5
+numpy
+# Vector store for RAG, semantic memory, and tool selection. Qdrant is
+# the standardized backend across VHT services (replaces chromadb-client,
+# which was dropped during the 2026-08 migration). Sync client — the three
+# wrappers (VectorRAG, MemoryVectorStore, ToolIndex) are entirely sync.
+qdrant-client>=1.11,<2
+
+# LOCAL ONNX EMBEDDING — uses onnxruntime + tokenzier to load
+# LOCAL_EMBEDDING_PATH directly. No sentence-transformers, no torch,
+# no network calls required.
+onnxruntime
+tokenizers
+
+# FASTEMBED LOCAL EMBEDDING (legacy fallback — kept for backward compatibility)
+# Uses ONNX Runtime for lightweight local embeddings.
+fastembed
+youtube-transcript-api
+# Markdown rendering for research reports (src/visual_report.py).
+# Imported at module-top so it's a hard core dep, not optional.
+markdown
+# Calendar .ics import/export (routes/calendar_routes.py).
+icalendar
+# Recurrence rule expansion for calendar events (routes/calendar_routes.py).
+# Imported directly as dateutil.rrule — make it explicit even though caldav
+# pulls it in transitively.
+python-dateutil
+# CalDAV sync (src/caldav_sync.py). Handles PROPFIND discovery + REPORT
+# fetch across Radicale, Nextcloud, Apple, Fastmail; we'd be reinventing
+# the protocol without it.
+caldav
+cryptography
+bcrypt
+mcp
+pyotp
+qrcode[pil]
+croniter
+# Per-user object storage backend (src/object_store.py). Optional —
+# only required when ODYSSEUS_USE_MINIO=true. Falls back to local FS.
+minio>=7.2
+pytest
+pytest-asyncio

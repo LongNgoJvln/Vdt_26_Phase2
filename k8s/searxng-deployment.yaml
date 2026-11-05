@@ -1,0 +1,140 @@
+# SearXNG — meta-search frontend. Mirrors docker-compose.yml lines 117-165.
+# The compose entrypoint wrapper exists to materialize /etc/searxng/settings.yml
+# from a templated file on first boot (lines 124-136). In k8s we keep the same
+# wrapper logic — the SearXNG image REQUIRES a populated settings.yml before
+# its entrypoint runs, and the inline ConfigMap still carries the
+# __SEARXNG_SECRET__ placeholder. The initContainer writes the resolved file
+# into an emptyDir which is then mounted at /etc/searxng/settings.yml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: searxng
+  namespace: hw5gai
+  labels:
+    app.kubernetes.io/name: searxng
+    app.kubernetes.io/part-of: 5g-agentic-ai
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: searxng
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: searxng
+  namespace: hw5gai
+  labels:
+    app.kubernetes.io/name: searxng
+    app.kubernetes.io/part-of: 5g-agentic-ai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: searxng
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: searxng
+    spec:
+      imagePullSecrets:
+        - name: harbor-pull
+      # Hard node affinity — pin to host 10.55.110.122. Label must be set on
+      # the node once: kubectl label node <name> vht.vn/node-ip=10.55.110.122
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: vht.vn/node-ip
+                    operator: In
+                    values:
+                      - "10.55.110.122"
+      # Match compose cap_drop/cap_add (lines 152-158). SearXNG needs to
+      # chown its data dir on boot and drop privs via su-exec.
+      securityContext:
+        runAsUser: 0            # required: entrypoint chowns /etc/searxng before su-exec drops to searxng user
+        runAsGroup: 0
+        capabilities:
+          drop:
+            - ALL
+          add:
+            - CHOWN
+            - SETGID
+            - SETUID
+            - DAC_OVERRIDE
+      initContainers:
+        - name: render-settings
+          image: 172.20.1.22/proxy-cache/library/python:3.12-slim
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              secret="${SEARXNG_SECRET:-}"
+              if [ -z "$secret" ]; then
+                secret="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+              fi
+              sed "s|__SEARXNG_SECRET__|$secret|g" /tmp/template/settings.yml > /settings/settings.yml
+              echo "[searxng-init] wrote /settings/settings.yml"
+          envFrom:
+            - secretRef:
+                name: app-env
+          volumeMounts:
+            - name: template
+              mountPath: /tmp/template
+              readOnly: true
+            - name: settings
+              mountPath: /settings
+      containers:
+        - name: searxng
+          image: 172.20.1.22/proxy-cache/searxng/searxng:2026.5.31-7159b8aed
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: app-env
+          env:
+            - name: SEARXNG_BASE_URL
+              value: "http://localhost:8080/"
+          ports:
+            - containerPort: 8080
+              name: http
+          volumeMounts:
+            # Resolved settings.yml from the initContainer.
+            - name: settings
+              mountPath: /etc/searxng/settings.yml
+              subPath: settings.yml
+              readOnly: true
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8080/\", timeout=5).read(1)'"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 6
+            failureThreshold: 20
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: template
+          configMap:
+            name: searxng-settings
+        - name: settings
+          emptyDir: {}

@@ -1,0 +1,23 @@
+# Inlined copy of config/searxng/settings.yml. k8s replaces the compose
+# entrypoint-wrapper (that templated this from a mount point) with a
+# direct ConfigMap mount at /etc/searxng/settings.yml.
+#
+# Refresh this file when config/searxng/settings.yml changes in the repo.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: searxng-settings
+  namespace: hw5gai
+  labels:
+    app.kubernetes.io/part-of: 5g-agentic-ai
+data:
+  settings.yml: |
+    use_default_settings: true
+
+    server:
+      secret_key: "__SEARXNG_SECRET__"
+
+    search:
+      formats:
+        - html
+        - json

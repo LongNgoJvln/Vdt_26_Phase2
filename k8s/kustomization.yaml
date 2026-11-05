@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - configmap-searxng.yaml
+  - postgres-statefulset.yaml
+  - searxng-deployment.yaml
+  - ntfy-deployment.yaml
+  - networkchange-deployment.yaml
+
+# Pin the app image tag here so `kustomize edit set image` is a one-liner
+# in CI. Infrastructure images (postgres/searxng/ntfy) are pinned inline in
+# their respective manifests because they bump rarely and need a deliberate
+# manual review when they do.
+images:
+  - name: 172.20.1.22/5g-ai/nc-v7-monolith
+    newTag: latest
