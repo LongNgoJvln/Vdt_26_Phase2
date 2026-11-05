@@ -6,12 +6,6 @@
 > Run `python scripts/verify_monolith_source.py` before creating or deploying an
 > archive. Package provenance is recorded in [`SOURCE_MANIFEST.md`](SOURCE_MANIFEST.md).
 
-```
-───────────────────────────────────────────────
- ⊹ ࣪ ˖ ૮( ˶ᵔ ᵕ ᵔ˶ )っ  Network Change vers. 1.0
-───────────────────────────────────────────────
-```
-
 ![Network Change](docs/odysseus.jpg)
 
 A self-hosted, multi-tenant AI workspace — the self-hosted equivalent of the
@@ -256,31 +250,8 @@ an internal admin console.
 - Non-admin users do not get shell/Python/file read-write by default; admin-only routes/tools (MCP mgmt, API tokens, webhooks, model/cookbook serving, backup/vault, app settings) are admin-gated. Other features are controlled by per-user privileges — review them before exposing a deployment.
 - Rotate any API keys ever pasted into a shared chat, screenshot, demo, or log.
 
-For HTTPS / reverse-proxy / private-access layering, see
-[`docs/SETUP.md`](docs/SETUP.md#private-or-proxied-deployments).
 
-## Contributing
-
-Help is welcome. The best entry points are fresh-install testing, provider
-setup bugs, mobile/editor polish, docs, and small focused refactors. See
-[`CONTRIBUTING.md`](CONTRIBUTING.md) for setup and PR guidelines,
-[`ROADMAP.md`](ROADMAP.md) for the help-wanted list.
 
 ## License
 
 MIT — see [LICENSE](LICENSE) and [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
-
-```
-                                  |
-                                 |||
-                                |||||
-                  |    |    |   |||||||
-                 )_)  )_)  )_)   ~|~
-                )___))___))___)\  |
-               )____)____)_____)\\|
-             _____|____|____|_____\\\__
-             \                       /
-       ~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~
-               ~^~  all aboard!  ~^~
-       ~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~~^~^~
-```
