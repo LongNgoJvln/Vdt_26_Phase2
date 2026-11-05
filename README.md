@@ -6,7 +6,7 @@
 > Run `python scripts/verify_monolith_source.py` before creating or deploying an
 > archive. Package provenance is recorded in [`SOURCE_MANIFEST.md`](SOURCE_MANIFEST.md).
 
-![Network Change](docs/Select model.png)
+![Network Change](docs/Select%20model.png)
 
 A self-hosted, multi-tenant AI workspace — the self-hosted equivalent of the
 ChatGPT/Claude UI, running on your own hardware, with your own data. Local-first,
